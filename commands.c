@@ -40,20 +40,16 @@ void get_command_argument(char *input)
 	int i, ch;
 
 	echo();
-	for(i = 0; ; i++) {
-		ch = getch();
-		if((i >= DUMP_SEARCH_LEN) || (ch == '\n')) {
-			input[i] = '\0';
-			break;
-		}
-		input[i] = ch;
-	}
+	getstr(input);
 	noecho();
 }
 
 int hexstring_to_int(const char *str)
 {
 	int value;
+
+	if(str == NULL)
+		return 0;
 
 	/* convert string to int */
 	if((strncmp(str, "0x", 2) == 0) ||
@@ -77,16 +73,14 @@ int proc_dumpinput(int ch, int address, int screen_size, const char *file)
 
 	if(ch == ' ') {
 		ch = last_search_key;
-		offset = last_address;
 		getinput = 0;
 		strcpy(input, last_input);
-		printw("%c, %X, %s\n", ch, offset, input);
-		       getch();
 	}
 	else {
-		offset = 0;
 		getinput = 1;
 	}
+
+	offset = last_address;
 
 	switch(ch) {
 		addch(':');
@@ -118,6 +112,7 @@ int proc_dumpinput(int ch, int address, int screen_size, const char *file)
 		}
 		address = search_text_pattern(input, 0, file, offset);
 		last_search_key = '/';
+		strcpy(last_input, input);
 		break;
 	case '?':
 		if(getinput) {
@@ -126,13 +121,13 @@ int proc_dumpinput(int ch, int address, int screen_size, const char *file)
 		}
 		address = search_hex_pattern(input, 0, file, offset);
 		last_search_key = '?';
+		strcpy(last_input, input);
 		break;
 	default:
 		break;
 	}
 
 	last_address = address + strlen(input);
-	strcpy(last_input, input);
 
 	return address;
 }
@@ -202,7 +197,7 @@ int cmd_dump(const char *file, const char *offset)
 			printw("\n");
 		}
 
-		printw("Menu| \'q\' - exit, \':\' - goto offset, \'/\' - search text, \'?\' - search hex  ##  Keys| UP, DOWN, PAGE-UP, PAGE-DOWN\n");
+		printw("Menu| \'q\' - exit, \':\' - goto offset, \'/\' - search text, \'?\' - search hex  ##  Keys| UP, DOWN, PAGE-UP, PAGE-DOWN, SPACE\n");
 	}
 	while((ch = getch()) != 'q');
 

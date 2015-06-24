@@ -19,7 +19,7 @@
 
 #define FNAME_SIZE	(128)
 #define PAGE_SIZE	(4*1024)
-#define SEEK_BACK	(128)
+#define PAGE_EXTRA	(128)
 
 #define SWAP16(x) ((((x) & 0xFF00) >> 8) | (((x) & 0x00FF) << 8))
 #define SWAP32(x) ((((x) & 0x00FF0000) >> 8) | (((x) & 0xFF000000) >> 24) | \
@@ -91,7 +91,7 @@ int search_text_pattern(char *pattern, int all, const char *fname, int offset)
 	int fd;
 	int page_count, patt_found;
 	int patt_found_history = 0, len, i;
-	char page[PAGE_SIZE+SEEK_BACK];
+	char page[PAGE_SIZE+PAGE_EXTRA];
 	int address = -1;
 
 	if(fname == NULL)
@@ -103,42 +103,40 @@ int search_text_pattern(char *pattern, int all, const char *fname, int offset)
 	fd = open(fname, O_RDONLY);
 	if(fd < 0)
 		return -1;
-	lseek(fd, offset, SEEK_SET); /* start from an offset */
 
 	len = strlen(pattern);
-	if(len >= SEEK_BACK)
+	if(len >= PAGE_EXTRA)
 		return -1;
 
-	page_count = 0;
 	patt_found = 0;
+	page_count = offset / PAGE_SIZE;
+	i = offset % PAGE_SIZE;
+	lseek(fd, page_count * PAGE_SIZE, SEEK_SET); /* page boundary */
+
 	printf(" Searching \"%s\" in %s...\n", pattern, fname);
-	while(read(fd, (page+SEEK_BACK), PAGE_SIZE) > 0) {
-		for(i = 0; i < (PAGE_SIZE+SEEK_BACK-len); i++) {
+	while(read(fd, page, PAGE_SIZE+PAGE_EXTRA) > 0) {
+		for(; i < PAGE_SIZE; i++) {
 			if(!strncmp((page+i), pattern, len)) {
 				patt_found = 1;
 				patt_found_history = 1;
 			}
 
 			if(patt_found == 1) {
-				address = ((page_count * PAGE_SIZE) + i -
-					   SEEK_BACK);
+				address = ((page_count * PAGE_SIZE) + i);
 				printf(" Found \'%s\' at offset: \"0x%X\"\n",
 				       pattern, address);
-				if(!all)
+				if(!all) {
 					goto exit_search;
+				}
 				else {
 					patt_found = 0;
 					i += len;
 				}
 			}
 		}
-		/* Note: sometimes strings may fall on the page boundaries, 
-		 * hence, last SEEK_BACK size bytes of a page is copied back
-		 * to top and then new data from disk is appended to that 
-		 * data. This algorithm should avoid missing pattern in the
-		 * boundaries */
-		strncpy(page, page+PAGE_SIZE-SEEK_BACK, SEEK_BACK);
 		page_count++;
+		i = 0;
+		lseek(fd, page_count * PAGE_SIZE, SEEK_SET); /* page boundary */
 	}
 	if(!patt_found_history)
 		printf(" Could not find the pattern \'%s\'!\n", pattern);
@@ -177,12 +175,15 @@ int search_hex_pattern(char *pattern, int all, const char *fname, int offset)
 		return -1;
 	}
 
-	page_count = 0;
 	patt_found = 0;
 	patt_found_history = 0;
+	page_count = offset / PAGE_SIZE;
+	i = offset % PAGE_SIZE;
+	lseek(fd, page_count, SEEK_SET); /* start from an offset */
+
 	/* read a page from file */
 	while(read(fd, page, PAGE_SIZE) > 0) {
-		for(i = 0; i <= PAGE_SIZE; i++) {
+		for(; i <= PAGE_SIZE; i++) {
 			/* pull the data from the page */
 			switch (ilen) {
 			case 4:
@@ -221,6 +222,7 @@ int search_hex_pattern(char *pattern, int all, const char *fname, int offset)
 
 		}
 		page_count++;
+		i = 0;
 	}
 	if(!patt_found_history)
 		printf(" Could not find the pattern \'%s\'! \n", pattern);
@@ -252,6 +254,7 @@ int main(int argc, char *argv[])
 	struct timeval t1, t2;
 	char *filename, *pattern, c;
 	char *command, *offset;
+	int ioffset;
 
 	filename = pattern = command = offset = NULL;
 	aflag = tflag = cflag = oflag = 0;
@@ -303,11 +306,15 @@ int main(int argc, char *argv[])
 			print_help();
 			return -1;
 		}
+
+		ioffset = hexstring_to_int(offset);
 		gettimeofday(&t1, NULL);
-		if(tflag)
-			search_text_pattern(pattern, aflag, filename, 0);
-		else
-			search_hex_pattern(pattern, aflag, filename, 0);
+		if(tflag) {
+			search_text_pattern(pattern, aflag, filename, ioffset);
+		}
+		else {
+			search_hex_pattern(pattern, aflag, filename, ioffset);
+		}
 		gettimeofday(&t2, NULL);
 
 		printf(" Search time = %d sec\n", (int)(t2.tv_sec - t1.tv_sec));

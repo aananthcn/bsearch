@@ -8,7 +8,7 @@ TARGET = bsearch
 
 FILES = bsearch.c commands.c
 
-CFLAGS = 
+CFLAGS = -g
 
 LFLAGS = -lncurses
 
