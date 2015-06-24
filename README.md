@@ -5,8 +5,8 @@ A tool to search patterns, header and other data structure within a binary file 
 Just clone this and give a make
 
 # Usage
- 1. bsearch [OPTIONS] -p "<pattern_hex>" -f "<file_name>"
- 2. bsearch [OPTIONS] -c "<command>" -f "<file_name>" <br>
+ 1. bsearch [OPTIONS] -p "pattern_hex" -f "file_name"
+ 2. bsearch [OPTIONS] -c "command" -f "file_name" <br>
 <br>
    OPTIONS: <br>
      -a		search for all occurance <br>
