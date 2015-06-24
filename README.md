@@ -7,12 +7,12 @@ Just clone this and give a make
 # Usage
  1. bsearch [OPTIONS] -p <pattern_hex> -f <file_name>
  2. bsearch [OPTIONS] -c <command> -f <file_name>
-
+<br>
    OPTIONS:
-     -a		search for all occurance
-     -t		text search, treats "pattern_hex" as text
-     -c		commands (see COMMAND section below)
-     -o		offset
-
+     -a		search for all occurance <br>
+     -t		text search, treats "pattern_hex" as text <br>
+     -c		commands (see COMMAND section below) <br>
+     -o		offset <br>
+<br>
    COMMANDS:
-     dump	display contents of file with additional options
+     dump	display contents of file with additional options <br>
