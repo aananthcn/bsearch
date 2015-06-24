@@ -1,5 +1,5 @@
 # bsearch
-Tool to search patterns, header and other data structure within a file system dump
+A tool to search patterns, header and other data structure within a binary file system dump
 
 # How to build
 Just clone this and give a make
