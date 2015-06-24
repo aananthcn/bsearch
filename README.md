@@ -15,4 +15,4 @@ Just clone this and give a make
      -o		offset <br>
 <br>
    COMMANDS: <br>
-     dump	display contents of file with additional options <br>
+     dump	- display contents of file with additional options <br>
