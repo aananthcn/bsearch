@@ -191,6 +191,8 @@ int cmd_dump(const char *file, const char *offset)
 			for(k=0; k < DUMP_BYTES_P_LINE; k++) {
 				if((line[k] >= 33) && (line[k] <= 126))
 					printw("%c",line[k]);
+				else if(line[k] == 0xFF)
+					printw(" ");
 				else
 					printw(".");
 			}

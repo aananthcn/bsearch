@@ -3,7 +3,7 @@
  * Email: caananth@visteon.com
  * License: GPL v2
  *
- * Version: 1.4
+ * Version: get the version in MY_VERSION macro below 
  * Date: Jun 20, 2015
  */
 #include <stdio.h>
@@ -15,6 +15,9 @@
 #include <sys/time.h>
 
 #include "commands.h"
+
+
+#define MY_VERSION (1.41)
 
 
 #define FNAME_SIZE	(128)
@@ -244,7 +247,7 @@ void print_help(void)
 	printf("     -o		offset\n");
 	printf("\n   COMMANDS:\n");
 	printf("     dump	display contents of file with additional options\n");
-	printf("\n\n");
+	printf("\n\nv%.2f\n", MY_VERSION);
 }
 
 int main(int argc, char *argv[])
