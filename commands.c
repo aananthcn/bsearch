@@ -182,16 +182,21 @@ int cmd_dump(const char *file, const char *offset)
 		clear();
 
 		for(i=0; i < screen_size; i += (j*4)) {
+			/* print address */
 			printw("%08X:", address+i);
+
+			/* print data */
 			for(j=0; j < (DUMP_BYTES_P_LINE/4); j++) {
 				printw(" %08X", *(((int*)(screen+i))+j));
 			}
 			printw("  ");
+
+			/* print characters */
 			line = screen+i;
 			for(k=0; k < DUMP_BYTES_P_LINE; k++) {
 				if((line[k] >= 33) && (line[k] <= 126))
 					printw("%c",line[k]);
-				else if(line[k] == 0xFF)
+				else if(line[k] == -1)
 					printw(" ");
 				else
 					printw(".");
