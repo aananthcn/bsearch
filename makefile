@@ -6,7 +6,11 @@
 
 TARGET = bsearch
 
-FILES = bsearch.c commands.c
+FILES = bsearch.c \
+	commands.c \
+	utils.c \
+	dump.c \
+	ext4.c
 
 CFLAGS = -g
 
@@ -14,3 +18,7 @@ LFLAGS = -lncurses
 
 all:
 	gcc ${FILES} ${CFLAGS} -o ${TARGET} ${LFLAGS}
+
+clean:
+	$(RM) *.o
+	$(RM) ${TARGET}

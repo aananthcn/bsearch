@@ -11,10 +11,12 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include <sys/time.h>
 
 #include "commands.h"
+#include "utils.h"
 
 
 #define MY_VERSION (1.41)
@@ -33,8 +35,8 @@ int validate_hex_pattern(char *p)
 	int retval = 0;
 	int i;
 
-	for(i = 0; p[i]; i++) {
-		if(toupper(p[i]) > 'F') {
+	for (i = 0; p[i]; i++) {
+		if (toupper(p[i]) > 'F') {
 			printf(" \'%s\' not a valid hex string\n", p);
 			retval = -1;
 			break;
@@ -50,11 +52,11 @@ int process_pattern_4_hex(char *pattern, int *ilen, unsigned int *pat_le,
 	int len;
 	int pat;
 
-	if(validate_hex_pattern(pattern) < 0)
+	if (validate_hex_pattern(pattern) < 0)
 		return -1;
 
         len = (int) strlen(pattern);
-        if((strncmp(pattern, "0x", 2) == 0) ||
+        if ((strncmp(pattern, "0x", 2) == 0) ||
            (strncmp(pattern, "0X", 2) == 0)) {
                 pat  = (int) strtol(pattern, NULL, 0);
                 len -= 2;
@@ -97,18 +99,18 @@ int search_text_pattern(char *pattern, int all, const char *fname, int offset)
 	char page[PAGE_SIZE+PAGE_EXTRA];
 	int address = -1;
 
-	if(fname == NULL)
+	if (fname == NULL)
 		return -1;
 
-	if(pattern == NULL)
+	if (pattern == NULL)
 		return -1;
 
 	fd = open(fname, O_RDONLY);
-	if(fd < 0)
+	if (fd < 0)
 		return -1;
 
 	len = strlen(pattern);
-	if(len >= PAGE_EXTRA)
+	if (len >= PAGE_EXTRA)
 		return -1;
 
 	patt_found = 0;
@@ -117,18 +119,18 @@ int search_text_pattern(char *pattern, int all, const char *fname, int offset)
 	lseek(fd, page_count * PAGE_SIZE, SEEK_SET); /* page boundary */
 
 	printf(" Searching \"%s\" in %s...\n", pattern, fname);
-	while(read(fd, page, PAGE_SIZE+PAGE_EXTRA) > 0) {
-		for(; i < PAGE_SIZE; i++) {
-			if(!strncmp((page+i), pattern, len)) {
+	while (read(fd, page, PAGE_SIZE+PAGE_EXTRA) > 0) {
+		for (; i < PAGE_SIZE; i++) {
+			if (!strncmp((page+i), pattern, len)) {
 				patt_found = 1;
 				patt_found_history = 1;
 			}
 
-			if(patt_found == 1) {
+			if (patt_found == 1) {
 				address = ((page_count * PAGE_SIZE) + i);
 				printf(" Found \'%s\' at offset: \"0x%X\"\n",
 				       pattern, address);
-				if(!all) {
+				if (!all) {
 					goto exit_search;
 				}
 				else {
@@ -141,7 +143,7 @@ int search_text_pattern(char *pattern, int all, const char *fname, int offset)
 		i = 0;
 		lseek(fd, page_count * PAGE_SIZE, SEEK_SET); /* page boundary */
 	}
-	if(!patt_found_history)
+	if (!patt_found_history)
 		printf(" Could not find the pattern \'%s\'!\n", pattern);
 
 exit_search:
@@ -159,21 +161,21 @@ int search_hex_pattern(char *pattern, int all, const char *fname, int offset)
 	int patt_found, patlen, patt_found_history;
 	int address = -1;
 
-	if(fname == NULL)
+	if (fname == NULL)
 		return -1;
 
 	fd = open(fname, O_RDONLY);
-	if(fd < 0)
+	if (fd < 0)
 		return -1;
 	lseek(fd, offset, SEEK_SET); /* start from an offset */
 
 	/* determine the size of pattern to search */
 	patlen = process_pattern_4_hex(pattern, &ilen, &pat_le, &pat_be);
-	if(patlen < 0) {
+	if (patlen < 0) {
 		printf(" Error: check your inputs!\n");
 		return -1;
 	}
-	if(patlen > 8) {
+	if (patlen > 8) {
 		printf(" Error: this version supports < 8 char patterns only\n");
 		return -1;
 	}
@@ -185,8 +187,8 @@ int search_hex_pattern(char *pattern, int all, const char *fname, int offset)
 	lseek(fd, page_count, SEEK_SET); /* start from an offset */
 
 	/* read a page from file */
-	while(read(fd, page, PAGE_SIZE) > 0) {
-		for(; i <= PAGE_SIZE; i++) {
+	while (read(fd, page, PAGE_SIZE) > 0) {
+		for (; i <= PAGE_SIZE; i++) {
 			/* pull the data from the page */
 			switch (ilen) {
 			case 4:
@@ -201,23 +203,23 @@ int search_hex_pattern(char *pattern, int all, const char *fname, int offset)
 			}
 
 			/* compare the date with patterns */
-			if(fdata == pat_le) {
+			if (fdata == pat_le) {
 				patt_found = 1;
 				patt_found_history = 1;
 				strcpy(mesg, "Little Endian format");
 			}
-			else if(fdata == pat_be) {
+			else if (fdata == pat_be) {
 				patt_found = 1;
 				patt_found_history = 1;
 				strcpy(mesg, "Big Endian format");
 			}
 
 			/* print message and exist if comparision succeeded */
-			if(patt_found == 1) {
+			if (patt_found == 1) {
 				address = ((page_count * PAGE_SIZE) + i);
 				printf(" Found \'%s\' in %s at offset: \"0x%X\"\n",
 				       pattern, mesg, address);
-				if(!all)
+				if (!all)
 					goto exit_search;
 				else
 					patt_found = 0;
@@ -227,7 +229,7 @@ int search_hex_pattern(char *pattern, int all, const char *fname, int offset)
 		page_count++;
 		i = 0;
 	}
-	if(!patt_found_history)
+	if (!patt_found_history)
 		printf(" Could not find the pattern \'%s\'! \n", pattern);
 
 exit_search:
@@ -247,6 +249,7 @@ void print_help(void)
 	printf("     -o		offset\n");
 	printf("\n   COMMANDS:\n");
 	printf("     dump	display contents of file with additional options\n");
+	printf("     ext4	displays ext4 file system info\n");
 	printf("\n\nv%.2f\n", MY_VERSION);
 }
 
@@ -295,16 +298,16 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if((argc < 3) || (filename == NULL)) {
+	if ((argc < 3) || (filename == NULL)) {
 		print_help();
 		return -1;
 	}
 
-	if(cflag) {
+	if (cflag) {
 		execute_command(command, filename, offset);
 	}
 	else {
-		if(pattern == NULL) {
+		if (pattern == NULL) {
 			printf(" please enter the pattern value\n");
 			print_help();
 			return -1;
@@ -312,7 +315,7 @@ int main(int argc, char *argv[])
 
 		ioffset = hexstring_to_int(offset);
 		gettimeofday(&t1, NULL);
-		if(tflag) {
+		if (tflag) {
 			search_text_pattern(pattern, aflag, filename, ioffset);
 		}
 		else {
