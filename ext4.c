@@ -12,10 +12,12 @@
 #include "ext4.h"
 
 
-#define EXT4_SUPER_BLOCK_OFFSET		1024
+#define EXT4_SUPER_BLOCK0_OFFSET		1024
 #define MAX_SCREENS			8
 
-static int max_rows, max_cols;
+static int MaxRows, MaxCols;
+static int BlockSize;
+
 
 void dump_super_block(char *screen, struct ext4_super_block *p)
 {
@@ -35,8 +37,8 @@ void dump_super_block(char *screen, struct ext4_super_block *p)
 	s += sprintf(s, "Free blocks count               = %d\n", p->s_free_blocks_count_lo);
 	s += sprintf(s, "Free inodes count               = %d\n", p->s_free_inodes_count);
 	s += sprintf(s, "First data block                = %d\n", p->s_first_data_block);
-	s += sprintf(s, "Block size                      = %d\n", p->s_log_block_size);
-	s += sprintf(s, "Allocation cluster size         = %d\n", p->s_log_cluster_size);
+	s += sprintf(s, "Block size: 2^(10+this_number)  = %d\n", p->s_log_block_size);
+	s += sprintf(s, "Cluster size: 2^(this_number)   = %d\n", p->s_log_cluster_size);
 	s += sprintf(s, "Blocks per group                = %d\n", p->s_blocks_per_group);
 	s += sprintf(s, "Inodes per group                = %d\n", p->s_inodes_per_group);
 	t = p->s_mtime;
@@ -45,14 +47,14 @@ void dump_super_block(char *screen, struct ext4_super_block *p)
 	s += sprintf(s, "Write time                      = %s", asctime(ti = localtime(&t)));
 	s += sprintf(s, "Mount count                     = %d\n", p->s_mnt_count);
 	s += sprintf(s, "Maximal mount count             = %d\n", p->s_max_mnt_count);
-	s += sprintf(s, "Magic signature                 = %d\n", p->s_magic);
-	s += sprintf(s, "File system state               = %d\n", p->s_state);
+	s += sprintf(s, "Magic signature                 = 0x%X\n", p->s_magic);
+	s += sprintf(s, "File system state (1 = clean)   = %d\n", p->s_state);
 	s += sprintf(s, "Behaviour when detecting errors = %d\n", p->s_errors);
 	s += sprintf(s, "Minor revision level            = %d\n", p->s_minor_rev_level);
 	t = p->s_lastcheck;
 	s += sprintf(s, "Time of last check              = %s", asctime(ti = localtime(&t)));
 	s += sprintf(s, "Max time between checks         = %d\n", p->s_checkinterval);
-	s += sprintf(s, "Creator OS                      = %d\n", p->s_creator_os);
+	s += sprintf(s, "Creator OS (0 = Linux)          = %d\n", p->s_creator_os);
 	s += sprintf(s, "Revision level                  = %d\n", p->s_rev_level);
 	s += sprintf(s, "Default uid for reserved blocks = %d\n", p->s_def_resuid);
 	s += sprintf(s, "Default gid for reserved blocks = %d\n", p->s_def_resgid);
@@ -159,6 +161,70 @@ void dump_super_block(char *screen, struct ext4_super_block *p)
 }
 
 
+void dump_group_desc(char *screen, struct ext4_group_desc *p)
+{
+	struct tm *ti;
+	time_t t;
+	int i, bracketor;
+	char *s;
+	u64 ul;
+
+	s = screen;
+	bracketor = 0;
+
+	s += sprintf(s, "+==================================================================+\n");
+	s += sprintf(s, "|                       BLOCK GROUP DESCRIPTOR                     |\n");
+	s += sprintf(s, "+==================================================================+\n");
+	ul = p->bg_block_bitmap_lo | ((u64)p->bg_block_bitmap_hi << 32);
+	s += sprintf(s, "Block bitmap block location     = %llu\n", ul);
+	ul = p->bg_inode_bitmap_lo | ((u64)p->bg_inode_bitmap_hi << 32);
+	s += sprintf(s, "Block inode block location      = %llu\n", ul);
+	ul = p->bg_inode_table_lo | ((u64)p->bg_inode_table_hi << 32);
+	s += sprintf(s, "Block inode table location      = %llu\n", ul);
+	ul = p->bg_free_blocks_count_lo | ((u64)p->bg_free_blocks_count_hi << 16);
+	s += sprintf(s, "Free blocks count               = %llu\n", ul);
+	ul = p->bg_free_inodes_count_lo | ((u64)p->bg_free_inodes_count_hi << 16);
+	s += sprintf(s, "Free inode count                = %llu\n", ul);
+	ul = p->bg_used_dirs_count_lo | ((u64)p->bg_used_dirs_count_hi << 16);
+	s += sprintf(s, "Directories count               = %llu\n", ul);
+	s += sprintf(s, "EXT4_BG_flags                   = 0x%x ", p->bg_flags);
+	if (p->bg_flags & 0x04) {
+		s += sprintf(s, "[INODE ZEROED");
+		bracketor = 1;
+	}
+	if (p->bg_flags & 0x02) {
+		if (bracketor)
+			s += sprintf(s, "|");
+		else
+			s += sprintf(s, "[");
+		s += sprintf(s, "BLOCK UNINIT");
+		bracketor = 1;
+	}
+	if (p->bg_flags & 0x01) {
+		if (bracketor)
+			s += sprintf(s, "|");
+		else
+			s += sprintf(s, "[");
+		s += sprintf(s, "INODE UNINIT");
+		bracketor = 1;
+	}
+	if (bracketor) {
+		s += sprintf(s, "]");
+		bracketor = 0;
+	}
+	s += sprintf(s, "\n");
+	ul = p->bg_exclude_bitmap_lo | ((u64)p->bg_exclude_bitmap_hi << 32);
+	s += sprintf(s, "Snapshot exclusion bitmap loc.  = %llu\n", ul);
+	ul = p->bg_block_bitmap_csum_lo | ((u64)p->bg_block_bitmap_csum_hi << 16);
+	s += sprintf(s, "Block bitmap checksum           = %llu\n", ul);
+	ul = p->bg_inode_bitmap_csum_lo | ((u64)p->bg_inode_bitmap_csum_hi << 16);
+	s += sprintf(s, "Inode bitmap checksum           = %llu\n", ul);
+	ul = p->bg_itable_unused_lo | ((u64)p->bg_itable_unused_hi << 16);
+	s += sprintf(s, "Unused inode count              = %llu\n", ul);
+}
+
+
+
 int print_screen(char *screen, int offset, int maxlen)
 {
 	int i, j, c;
@@ -183,12 +249,22 @@ int print_screen(char *screen, int offset, int maxlen)
 	return (i >= len);
 }
 
+void print_menu(void)
+{
+	printw("----.\n");
+	printw("Menu| \'q\' - exit, \'s\' - Super Block, \'g\' - B.Group Desc, \'?\' - TBD");
+}
+
 int cmd_ext4(const char *file)
 {
 	int fd, ch, end;
-	int address = EXT4_SUPER_BLOCK_OFFSET;
+	int address = EXT4_SUPER_BLOCK0_OFFSET;
 	struct ext4_super_block super_block;
+	struct ext4_group_desc	group_desc;
+
 	char * sb = (char *)&super_block;
+	char *bg = (char *)&group_desc;
+
 	char *screen, *line;
 	int screen_size;
 	struct winsize w;
@@ -199,9 +275,9 @@ int cmd_ext4(const char *file)
 
 	/* get the screen size for display */
 	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-	max_rows = w.ws_row-1;
-	max_cols = w.ws_col;
-	screen_size = max_rows * max_cols;
+	MaxRows = w.ws_row-1;
+	MaxCols = w.ws_col;
+	screen_size = MaxRows * MaxCols;
 	screen = (char *) malloc(MAX_SCREENS * screen_size);
 	if (screen == NULL) {
 		printf(" Could not allocate memory for %d bytes\n",
@@ -227,12 +303,12 @@ int cmd_ext4(const char *file)
 	/* fetch and print super block by default */
 	lseek(fd, address, SEEK_SET);
 	read(fd, sb, sizeof(super_block));
+	BlockSize = 1 << (10+super_block.s_log_block_size);
 	dump_super_block(screen, &super_block);
-	end = print_screen(screen, 0, max_rows - 1);
+	end = print_screen(screen, 0, MaxRows - 1);
 
 	/* menu for further action */
-	printw("----.\n");
-	printw("Menu| \'q\' - exit, \':\' - TBD, \'/\' - TBD, \'?\' - TBD");
+	print_menu();
 
 	/* wait for user command and display contents as per menu */
 	while ((ch = getch()) != 'q') {
@@ -250,23 +326,38 @@ int cmd_ext4(const char *file)
 		case KEY_DOWN:
 			if (!end)
 				offset++;
-			if (offset > (MAX_SCREENS-1) * max_rows)
-				offset = (MAX_SCREENS-1) * max_rows;
+			if (offset > (MAX_SCREENS-1) * MaxRows)
+				offset = (MAX_SCREENS-1) * MaxRows;
 			break;
 		case KEY_NPAGE:
 			if (!end)
 				offset += 10;
-			if (offset > (MAX_SCREENS-1) * max_rows)
-				offset = (MAX_SCREENS-1) * max_rows;
+			if (offset > (MAX_SCREENS-1) * MaxRows)
+				offset = (MAX_SCREENS-1) * MaxRows;
+			break;
+		case 's':
+			/* fetch and print super block */
+			address = EXT4_SUPER_BLOCK0_OFFSET;
+			lseek(fd, address, SEEK_SET);
+			read(fd, sb, sizeof(super_block));
+			dump_super_block(screen, &super_block);
+			end = print_screen(screen, 0, MaxRows - 1);
+			break;
+		case 'g':
+			/* fetch and print block group descriptor */
+			address = BlockSize;
+			lseek(fd, address, SEEK_SET);
+			read(fd, bg, sizeof(group_desc));
+			dump_group_desc(screen, &group_desc);
+			end = print_screen(screen, 0, MaxRows - 1);
 			break;
 		default:
 			break;
 		}
 
-		end = print_screen(screen, offset, max_rows - 1);
+		end = print_screen(screen, offset, MaxRows - 1);
 		/* menu for further action */
-		printw("----.\n");
-		printw("Menu| \'q\' - exit, \':\' - TBD, \'/\' - TBD, \'?\' - TBD");
+		print_menu();
 
 	}
 
