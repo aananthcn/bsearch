@@ -5,6 +5,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #include <ncurses.h>
 
@@ -176,11 +177,11 @@ void dump_group_desc(char *screen, struct ext4_group_desc *p)
 	s += sprintf(s, "|                       BLOCK GROUP DESCRIPTOR                     |\n");
 	s += sprintf(s, "+==================================================================+\n");
 	ul = p->bg_block_bitmap_lo | ((u64)p->bg_block_bitmap_hi << 32);
-	s += sprintf(s, "Block bitmap block location     = %llu\n", ul);
+	s += sprintf(s, "Block bitmap location           = %llu\n", ul);
 	ul = p->bg_inode_bitmap_lo | ((u64)p->bg_inode_bitmap_hi << 32);
-	s += sprintf(s, "Block inode block location      = %llu\n", ul);
+	s += sprintf(s, "Inode bitmap location           = %llu\n", ul);
 	ul = p->bg_inode_table_lo | ((u64)p->bg_inode_table_hi << 32);
-	s += sprintf(s, "Block inode table location      = %llu\n", ul);
+	s += sprintf(s, "Inode table location            = %llu\n", ul);
 	ul = p->bg_free_blocks_count_lo | ((u64)p->bg_free_blocks_count_hi << 16);
 	s += sprintf(s, "Free blocks count               = %llu\n", ul);
 	ul = p->bg_free_inodes_count_lo | ((u64)p->bg_free_inodes_count_hi << 16);
@@ -224,6 +225,74 @@ void dump_group_desc(char *screen, struct ext4_group_desc *p)
 }
 
 
+int search_screen(char *screen, char *str, int offset)
+{
+	int line_no = 0;
+	char line[4096];
+	int i, j;
+	int len;
+
+	/* convert the search string to lower */
+	len = strlen(str);
+	for (i = 0; i < len; i++) {
+		str[i] = tolower(str[i]);
+	}
+
+	/* search the string in screen */
+	len = strlen(screen);
+	for (i = j = 0; (i < len) && (j < sizeof(line)-1); i++, j++) {
+		/* start copying a line from offset */
+		if (line_no >= offset) {
+			line[j] = tolower(screen[i]);
+		}
+
+		/* check for end of current line */
+		if (screen[i] == '\n') {
+			line[i+1] = '\0';
+			line_no++;
+			j = 0;
+		}
+
+		/* search string in current line */
+		if ((j == 0) && (line_no)) {
+			if (strstr(line, str) != NULL) {
+				/* found the string */
+				line_no--;
+				goto found;
+			}
+		}
+
+	}
+	line_no = 0; //scroll back
+
+found:
+
+	return line_no;
+}
+
+void print_help(char *screen)
+{
+	char *s;
+
+	s = screen;
+	clear();
+	s += sprintf(s, "+==================================================================+\n");
+	s += sprintf(s, "|                       EXT4 ANALYZER HELP                         |\n");
+	s += sprintf(s, "+==================================================================+\n");
+	s += sprintf(s, " \'s\' - print \"Super Block\"\n");
+	s += sprintf(s, " \'b\' - print \"Block Group Description\"\n");
+	s += sprintf(s, " \'\' - \n");
+	s += sprintf(s, " \'\' - \n");
+	s += sprintf(s, " \'/\' - search text in screen\n");
+	s += sprintf(s, " \'n\' - search next\n");
+}
+
+static void print_menu(void)
+{
+	move(MaxRows, 0);
+	printw("Menu| \'q\' - exit; \'?\' - help; other commands: \'s\' \'b\' \'n\'");
+}
+
 
 int print_screen(char *screen, int offset, int maxlen)
 {
@@ -246,13 +315,8 @@ int print_screen(char *screen, int offset, int maxlen)
 
 	}
 
+	print_menu();
 	return (i >= len);
-}
-
-void print_menu(void)
-{
-	printw("----.\n");
-	printw("Menu| \'q\' - exit, \'s\' - Super Block, \'g\' - B.Group Desc, \'?\' - TBD");
 }
 
 int cmd_ext4(const char *file)
@@ -269,6 +333,7 @@ int cmd_ext4(const char *file)
 	int screen_size;
 	struct winsize w;
 	int offset = 0;
+	char str[1024];
 
 	/* screen is where all display content will be dumped */
 	screen = line = NULL;
@@ -300,15 +365,15 @@ int cmd_ext4(const char *file)
 	scrollok(stdscr, TRUE);
 	ch = 0;
 
-	/* fetch and print super block by default */
+	/* fetch super block to get block size */
 	lseek(fd, address, SEEK_SET);
 	read(fd, sb, sizeof(super_block));
 	BlockSize = 1 << (10+super_block.s_log_block_size);
-	dump_super_block(screen, &super_block);
-	end = print_screen(screen, 0, MaxRows - 1);
 
-	/* menu for further action */
-	print_menu();
+
+	/* print help as default screen */
+	print_help(screen);
+	print_screen(screen, offset, MaxRows);
 
 	/* wait for user command and display contents as per menu */
 	while ((ch = getch()) != 'q') {
@@ -335,27 +400,38 @@ int cmd_ext4(const char *file)
 			if (offset > (MAX_SCREENS-1) * MaxRows)
 				offset = (MAX_SCREENS-1) * MaxRows;
 			break;
+		case '/':
+			put_command_prompt('/');
+			get_command_argument(str);
+			offset = search_screen(screen, str, 0);
+			break;
+		case '?':
+			print_help(screen);
+			break;
+		case 'n':
+			offset = search_screen(screen, str, offset+1);
+			break;
 		case 's':
 			/* fetch and print super block */
 			address = EXT4_SUPER_BLOCK0_OFFSET;
 			lseek(fd, address, SEEK_SET);
 			read(fd, sb, sizeof(super_block));
 			dump_super_block(screen, &super_block);
-			end = print_screen(screen, 0, MaxRows - 1);
+			offset = 0;
 			break;
-		case 'g':
+		case 'b':
 			/* fetch and print block group descriptor */
 			address = BlockSize;
 			lseek(fd, address, SEEK_SET);
 			read(fd, bg, sizeof(group_desc));
 			dump_group_desc(screen, &group_desc);
-			end = print_screen(screen, 0, MaxRows - 1);
+			offset = 0;
 			break;
 		default:
 			break;
 		}
 
-		end = print_screen(screen, offset, MaxRows - 1);
+		end = print_screen(screen, offset, MaxRows);
 		/* menu for further action */
 		print_menu();
 

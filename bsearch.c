@@ -237,7 +237,7 @@ exit_search:
 	return address;
 }
 
-void print_help(void)
+static void print_help(void)
 {
 	printf("\n usage: \n ------\n");
 	printf(" 1. bsearch [OPTIONS] -p <pattern_hex> -f <file_name>\n");
