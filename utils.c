@@ -8,6 +8,80 @@
 
 #include "utils.h"
 
+
+void dump_mem_tobuffer(char *obuf, char *ibuf, int sz, char *msg,
+		       int addr, int bpline)
+{
+	int i, j, k;
+	char *line, *s;
+
+	s = obuf;
+
+	/* Print header */
+	for (i=0; i < 34; i++)
+		s += sprintf(s, "*");
+	s += sprintf(s, " %s ", msg);
+	for (; i > 0; i--)
+		s += sprintf(s, "*");
+	s += sprintf(s, "\n");
+
+	/* rows loop */
+	for (i=0; i < sz; i += (j*4)) {
+		/* print addr */
+		s += sprintf(s, "%08X:", addr+i);
+
+		/* print 'bpline' bytes per line */
+		for (j=0; j < (bpline/4); j++) {
+			s += sprintf(s, " %08X", *(((int*)(ibuf+i))+j));
+		}
+		s += sprintf(s, "  ");
+
+		/* print characters */
+		line = ibuf+i;
+		for(k=0; k < bpline; k++) {
+			if((line[k] >= 33) && (line[k] <= 126))
+				s += sprintf(s, "%c",line[k]);
+			else if(line[k] == -1)
+				s += sprintf(s, " ");
+			else
+				s += sprintf(s, ".");
+		}
+		s += sprintf(s, "\n");
+	}
+}
+
+
+void print_mem_onscreen(char *screen, int sz_y, int addr, int bpline)
+{
+	int i, j, k;
+	char *line;
+
+	/* rows loop */
+	for (i=0; i < sz_y; i += (j*4)) {
+		/* print addr */
+		printw("%08X:", addr+i);
+
+		/* print 'bpline' bytes per line */
+		for (j=0; j < (bpline/4); j++) {
+			printw(" %08X", *(((int*)(screen+i))+j));
+		}
+		printw("  ");
+
+		/* print characters */
+		line = screen+i;
+		for(k=0; k < bpline; k++) {
+			if((line[k] >= 33) && (line[k] <= 126))
+				printw("%c",line[k]);
+			else if(line[k] == -1)
+				printw(" ");
+			else
+				printw("·");
+		}
+		printw("\n");
+	}
+}
+
+
 void put_command_prompt(int c)
 {
 	int x, y;

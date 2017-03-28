@@ -13,11 +13,13 @@
 #include "ext4.h"
 
 
-#define EXT4_SUPER_BLOCK0_OFFSET		1024
-#define MAX_SCREENS			8
+#define SCRATCHPAD_SIZE			(4096*1024)
+#define EXT4_SUPER_BLOCK0_OFFSET	(1024)
+#define MAX_SCREENS			(8)
 
 static int MaxRows, MaxCols;
 static int BlockSize;
+static u64 BlockBitmapAddr, InodeBitmapAddr, InodeTableAddr;
 
 
 void dump_super_block(char *screen, struct ext4_super_block *p)
@@ -280,7 +282,10 @@ void print_help(char *screen)
 	s += sprintf(s, "|                       EXT4 ANALYZER HELP                         |\n");
 	s += sprintf(s, "+==================================================================+\n");
 	s += sprintf(s, " \'s\' - print \"Super Block\"\n");
-	s += sprintf(s, " \'b\' - print \"Block Group Description\"\n");
+	s += sprintf(s, " \'g\' - print \"Block Group Description\"\n");
+	s += sprintf(s, " \'i\' - print \"Inode Table\"\n");
+	s += sprintf(s, " \'t\' - print \"Inode bitmap\"\n");
+	s += sprintf(s, " \'l\' - print \"Block bitmap\"\n");
 	s += sprintf(s, " \'\' - \n");
 	s += sprintf(s, " \'\' - \n");
 	s += sprintf(s, " \'/\' - search text in screen\n");
@@ -290,7 +295,7 @@ void print_help(char *screen)
 static void print_menu(void)
 {
 	move(MaxRows, 0);
-	printw("Menu| \'q\' - exit; \'?\' - help; other commands: \'s\' \'b\' \'n\'");
+	printw("Menu| \'q\' - exit; \'?\' - help; other commands: \'s\' \'g\' \'i\' \'l\' \'t\'");
 }
 
 
@@ -319,18 +324,45 @@ int print_screen(char *screen, int offset, int maxlen)
 	return (i >= len);
 }
 
+void init_ext4(int fd, char *sb, char *bg)
+{
+	int address, size;
+	struct ext4_super_block *psb;
+	struct ext4_group_desc *pbg;
+
+	psb = (struct ext4_super_block *) sb;
+	pbg = (struct ext4_group_desc *) bg;
+
+	/* read super block */
+	address = EXT4_SUPER_BLOCK0_OFFSET;
+	lseek(fd, address, SEEK_SET);
+	read(fd, sb, sizeof(struct ext4_super_block));
+	BlockSize = 1 << (10+psb->s_log_block_size);
+
+	/* read block group descriptor */
+	address = BlockSize * 1;
+	lseek(fd, address, SEEK_SET);
+	read(fd, bg, sizeof(struct ext4_group_desc));
+	BlockBitmapAddr = (pbg->bg_block_bitmap_lo |
+		((u64)pbg->bg_block_bitmap_hi << 32)) * BlockSize;
+	InodeBitmapAddr = (pbg->bg_inode_bitmap_lo |
+		((u64)pbg->bg_inode_bitmap_hi << 32)) * BlockSize;
+	InodeTableAddr = (pbg->bg_inode_table_lo |
+		((u64)pbg->bg_inode_table_hi << 32)) * BlockSize;
+}
+
 int cmd_ext4(const char *file)
 {
-	int fd, ch, end;
+	int fd, ch, end, size;
 	int address = EXT4_SUPER_BLOCK0_OFFSET;
 	struct ext4_super_block super_block;
 	struct ext4_group_desc	group_desc;
 
-	char * sb = (char *)&super_block;
+	char *sb = (char *)&super_block;
 	char *bg = (char *)&group_desc;
 
-	char *screen, *line;
-	int screen_size;
+	char *screen, *line, *mem;
+	int screen_size, screen_memsize;
 	struct winsize w;
 	int offset = 0;
 	char str[1024];
@@ -343,10 +375,20 @@ int cmd_ext4(const char *file)
 	MaxRows = w.ws_row-1;
 	MaxCols = w.ws_col;
 	screen_size = MaxRows * MaxCols;
-	screen = (char *) malloc(MAX_SCREENS * screen_size);
+	screen_memsize = screen_size * MAX_SCREENS;
+	screen = (char *) malloc(screen_memsize);
 	if (screen == NULL) {
 		printf(" Could not allocate memory for %d bytes\n",
-		       screen_size);
+		       screen_memsize);
+		return -1;
+	}
+
+	/* allocate space for rough work */
+	mem = (char *) malloc(SCRATCHPAD_SIZE);
+	if (mem == NULL) {
+		printf(" Could not allocate scratchpad memory for %d bytes\n",
+		       SCRATCHPAD_SIZE);
+		free(screen);
 		return -1;
 	}
 
@@ -365,11 +407,7 @@ int cmd_ext4(const char *file)
 	scrollok(stdscr, TRUE);
 	ch = 0;
 
-	/* fetch super block to get block size */
-	lseek(fd, address, SEEK_SET);
-	read(fd, sb, sizeof(super_block));
-	BlockSize = 1 << (10+super_block.s_log_block_size);
-
+	init_ext4(fd, sb, bg);
 
 	/* print help as default screen */
 	print_help(screen);
@@ -408,6 +446,27 @@ int cmd_ext4(const char *file)
 		case '?':
 			print_help(screen);
 			break;
+		case 'i':
+			lseek(fd, InodeTableAddr, SEEK_SET);
+			size = read(fd, mem, BlockSize);
+			dump_mem_tobuffer(screen, mem, size, "Inode Table",
+					   (int)InodeTableAddr, 32);
+			offset = 0;
+			break;
+		case 't':
+			lseek(fd, InodeBitmapAddr, SEEK_SET);
+			size = read(fd, mem, BlockSize);
+			dump_mem_tobuffer(screen, mem, size, "Inode Bitmap",
+					   (int)InodeBitmapAddr, 32);
+			offset = 0;
+			break;
+		case 'l':
+			lseek(fd, BlockBitmapAddr, SEEK_SET);
+			size = read(fd, mem, BlockSize);
+			dump_mem_tobuffer(screen, mem, size, "Block Bitmap",
+					   (int)BlockBitmapAddr, 32);
+			offset = 0;
+			break;
 		case 'n':
 			offset = search_screen(screen, str, offset+1);
 			break;
@@ -419,7 +478,7 @@ int cmd_ext4(const char *file)
 			dump_super_block(screen, &super_block);
 			offset = 0;
 			break;
-		case 'b':
+		case 'g':
 			/* fetch and print block group descriptor */
 			address = BlockSize;
 			lseek(fd, address, SEEK_SET);
@@ -432,6 +491,7 @@ int cmd_ext4(const char *file)
 		}
 
 		end = print_screen(screen, offset, MaxRows);
+
 		/* menu for further action */
 		print_menu();
 
@@ -442,6 +502,9 @@ int cmd_ext4(const char *file)
 
 	if (screen != NULL) {
 		free(screen);
+	}
+	if (mem != NULL) {
+		free(mem);
 	}
 	close(fd);
 	return 0;

@@ -93,7 +93,7 @@ int cmd_dump(const char *file, const char *offset)
 	int address;
 	int ch, loop_on = 1;
 	struct winsize w;
-	char *screen, *line;
+	char *screen;
 	int screen_size, i, j, k;
 
 	/* convert string to int */
@@ -135,28 +135,8 @@ int cmd_dump(const char *file, const char *offset)
 		read(fd, screen, screen_size);
 		clear();
 
-		for (i=0; i < screen_size; i += (j*4)) {
-			/* print address */
-			printw("%08X:", address+i);
-
-			/* print data */
-			for (j=0; j < (DUMP_BYTES_P_LINE/4); j++) {
-				printw(" %08X", *(((int*)(screen+i))+j));
-			}
-			printw("  ");
-
-			/* print characters */
-			line = screen+i;
-			for(k=0; k < DUMP_BYTES_P_LINE; k++) {
-				if((line[k] >= 33) && (line[k] <= 126))
-					printw("%c",line[k]);
-				else if(line[k] == -1)
-					printw(" ");
-				else
-					printw(".");
-			}
-			printw("\n");
-		}
+		print_mem_onscreen(screen, screen_size, address,
+				   DUMP_BYTES_P_LINE);
 
 		printw("Menu| \'q\' - exit, \':\' - goto offset, \'/\' - search text, \'?\' - search hex  ##  Keys| UP, DOWN, PAGE-UP, PAGE-DOWN, SPACE\n");
 	}
