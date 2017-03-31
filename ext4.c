@@ -333,6 +333,7 @@ int parse_inode(int fd, char *s, int inode_no)
 	char block_txt[64];
 	struct ext4_inode inode;
 	char *p, *s0;
+	int i;
 
 	s0 = s;
 
@@ -367,6 +368,19 @@ int parse_inode(int fd, char *s, int inode_no)
 		strcpy(block_txt, "blocks");
 	}
 	s += sprintf(s, "Block count: %d \"%s\"\n", blocks, block_txt);
+
+	/* print blocks pointed by this inode */
+	s += sprintf(s, "Blocks     :");
+	for (i = 0; i < 12; i++) {
+		s += sprintf(s, " %08X", inode.i_block[i]);
+	}
+	s += sprintf(s, "\n");
+	s += sprintf(s, "Blocks *   : %08X\n", inode.i_block[12]);
+	s += sprintf(s, "Blocks **  : %08X\n", inode.i_block[13]);
+	s += sprintf(s, "Blocks *** : %08X\n", inode.i_block[14]);
+
+
+
 	s += sprintf(s, "\n\n");
 
 	return (s - s0);
