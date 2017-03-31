@@ -331,7 +331,11 @@ int parse_inode(int fd, char *s, int inode_no)
 	u64 tmp;
 	int address, blocks;
 	char block_txt[64];
+
 	struct ext4_inode inode;
+	struct ext4_extent_header *pxth;
+	struct ext4_extent *pxt;
+
 	char *p, *s0;
 	int i;
 
@@ -343,11 +347,11 @@ int parse_inode(int fd, char *s, int inode_no)
 	p = (char *) &inode;
 	read(fd, p, sizeof(inode));
 
-	s += sprintf(s, "Inode number: %d\n", inode_no);
+	s += sprintf(s, "Inode number    : %d\n", inode_no);
 
 	tmp = (u64)inode.i_size_lo | ((u64)inode.i_size_high) << 32;
-	s += sprintf(s, "File size: %llu\n", tmp);
-	s += sprintf(s, "Hard link count: %d\n", inode.i_links_count);
+	s += sprintf(s, "File size       : %llu\n", tmp);
+	s += sprintf(s, "Hard link count : %d\n", inode.i_links_count);
 
 	/* block count calculation is bit tricky */
 	if (HasHugeFile) {
@@ -367,18 +371,34 @@ int parse_inode(int fd, char *s, int inode_no)
 	if (!blocks) {
 		strcpy(block_txt, "blocks");
 	}
-	s += sprintf(s, "Block count: %d \"%s\"\n", blocks, block_txt);
+	s += sprintf(s, "Block count     : %d \"%s\"\n", blocks, block_txt);
 
 	/* print blocks pointed by this inode */
-	s += sprintf(s, "Blocks     :");
-	for (i = 0; i < 12; i++) {
-		s += sprintf(s, " %08X", inode.i_block[i]);
-	}
-	s += sprintf(s, "\n");
-	s += sprintf(s, "Blocks *   : %08X\n", inode.i_block[12]);
-	s += sprintf(s, "Blocks **  : %08X\n", inode.i_block[13]);
-	s += sprintf(s, "Blocks *** : %08X\n", inode.i_block[14]);
+	if (inode.i_flags & EXT4_EXTENTS_FL) {
+		pxth = (struct ext4_extent_header *) &inode.i_block[0];
+		pxt  = (struct ext4_extent *) ((char *) &inode.i_block[0] +
+					     sizeof(struct ext4_extent_header));
 
+		if (pxth->eh_magic != 0xf30a) {
+			s += sprintf(s, "Error: Extent header magic = %d\n",
+				     (int)pxth->eh_magic);
+		}
+		tmp = pxt->ee_start_lo | ((u64)pxt->ee_start_hi) << 32;
+		s += sprintf(s, "Block number    : %llu\n", tmp);
+		s += sprintf(s, "Block address   : 0x%llX\n", tmp * BlockSize);
+		s += sprintf(s, "Block size      : %d\n", pxt->ee_len);
+	}
+	else {
+
+		s += sprintf(s, "Blocks          :");
+		for (i = 0; i < 12; i++) {
+			s += sprintf(s, " %08X", inode.i_block[i]);
+		}
+		s += sprintf(s, "\n");
+		s += sprintf(s, "Blocks *        : %08X\n", inode.i_block[12]);
+		s += sprintf(s, "Blocks **       : %08X\n", inode.i_block[13]);
+		s += sprintf(s, "Blocks ***      : %08X\n", inode.i_block[14]);
+	}
 
 
 	s += sprintf(s, "\n\n");

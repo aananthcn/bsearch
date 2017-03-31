@@ -168,6 +168,7 @@ struct ext4_group_desc
 #define	EXT4_N_BLOCKS			(EXT4_TIND_BLOCK + 1)
 
 #define EXT4_HUGE_FILE_FL		0x40000
+#define EXT4_EXTENTS_FL			0x80000
 
 /*
  * Structure of an inode on the disk
@@ -230,6 +231,41 @@ struct ext4_inode {
 	__le32  i_crtime;       /* File Creation time */
 	__le32  i_crtime_extra; /* extra FileCreationtime (nsec << 2 | epoch) */
 	__le32  i_version_hi;	/* high 32 bits for 64-bit version */
+};
+
+
+/*
+ * This is the extent on-disk structure.
+ * It's used at the bottom of the tree.
+ */
+struct ext4_extent {
+        __le32  ee_block;       /* first logical block extent covers */
+        __le16  ee_len;         /* number of blocks covered by extent */
+        __le16  ee_start_hi;    /* high 16 bits of physical block */
+        __le32  ee_start_lo;    /* low 32 bits of physical block */
+};
+
+/*
+ * This is index on-disk structure.
+ * It's used at all the levels except the bottom.
+ */
+struct ext4_extent_idx {
+        __le32  ei_block;       /* index covers logical blocks from 'block' */
+        __le32  ei_leaf_lo;     /* pointer to the physical block of the next *
+                                 * level. leaf or next index could be there */
+        __le16  ei_leaf_hi;     /* high 16 bits of physical block */
+        __u16   ei_unused;
+};
+
+/*
+ * Each block (leaves and indexes), even inode-stored has header.
+ */
+struct ext4_extent_header {
+        __le16  eh_magic;       /* probably will support different formats */
+        __le16  eh_entries;     /* number of valid entries */
+        __le16  eh_max;         /* capacity of store in entries */
+        __le16  eh_depth;       /* has tree real underlying blocks? */
+        __le32  eh_generation;  /* generation of the tree */
 };
 
 
