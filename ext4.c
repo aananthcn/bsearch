@@ -18,8 +18,9 @@
 #define MAX_SCREENS			(8)
 
 static int MaxRows, MaxCols;
-static int BlockSize;
+static int BlockSize, InodesPrGrp, InodeSize;
 static u64 BlockBitmapAddr, InodeBitmapAddr, InodeTableAddr;
+static u8 HasHugeFile;
 
 
 void dump_super_block(char *screen, struct ext4_super_block *p)
@@ -64,14 +65,14 @@ void dump_super_block(char *screen, struct ext4_super_block *p)
 	s += sprintf(s, "First non-reserved inode        = %d\n", p->s_first_ino);
 	s += sprintf(s, "Size of inode structure         = %d\n", p->s_inode_size);
 	s += sprintf(s, "Block group no of this superblk = %d\n", p->s_block_group_nr);
-	s += sprintf(s, "Compatible feature set          = %d\n", p->s_feature_compat);
-	s += sprintf(s, "Incompatible feature set        = %d\n", p->s_feature_incompat);
-	s += sprintf(s, "Readonly compatible feature set = %d\n", p->s_feature_ro_compat);
+	s += sprintf(s, "Compatible feature set          = 0x%08X\n", p->s_feature_compat);
+	s += sprintf(s, "Incompatible feature set        = 0x%08X\n", p->s_feature_incompat);
+	s += sprintf(s, "Readonly compatible feature set = 0x%08X\n", p->s_feature_ro_compat);
 	s += sprintf(s, "128-bit uuid for volume         = ");
 	for (i=0; i < 16; i++)
 		s += sprintf(s, "%x", p->s_uuid[i]);
 	s += sprintf(s, "\n");
-	s += sprintf(s, "Volume name                     = %s\n", p->s_volume_name);
+	s += sprintf(s, "Volume name                     = \"%s\"\n", p->s_volume_name);
 	s += sprintf(s, "Last mounted directory	        = %s\n", p->s_last_mounted);
 	s += sprintf(s, "Compression algorithm           = %d\n", p->s_algorithm_usage_bitmap);
 	s += sprintf(s, "Pre allocate blocks             = %d\n", p->s_prealloc_blocks);
@@ -324,6 +325,114 @@ int print_screen(char *screen, int offset, int maxlen)
 	return (i >= len);
 }
 
+
+int parse_inode(int fd, char *s, int inode_no)
+{
+	u64 tmp;
+	int address, blocks;
+	char block_txt[64];
+	struct ext4_inode inode;
+	char *p, *s0;
+
+	s0 = s;
+
+	/* find the address of current inode */
+	address = InodeTableAddr + (InodeSize * (inode_no-1));
+	lseek(fd, address, SEEK_SET);
+	p = (char *) &inode;
+	read(fd, p, sizeof(inode));
+
+	s += sprintf(s, "Inode number: %d\n", inode_no);
+
+	tmp = (u64)inode.i_size_lo | ((u64)inode.i_size_high) << 32;
+	s += sprintf(s, "File size: %llu\n", tmp);
+	s += sprintf(s, "Hard link count: %d\n", inode.i_links_count);
+
+	/* block count calculation is bit tricky */
+	if (HasHugeFile) {
+		blocks = inode.i_blocks_lo | ((u64)
+			inode.osd2.linux2.l_i_blocks_high) << 32;
+		if (inode.i_flags & EXT4_HUGE_FILE_FL) {
+			strcpy(block_txt, "full size blocks");
+		}
+		else {
+			strcpy(block_txt, "512 bytes chunks");
+		}
+	}
+	else {
+		blocks = inode.i_blocks_lo;
+		strcpy(block_txt, "512 bytes chunks");
+	}
+	if (!blocks) {
+		strcpy(block_txt, "blocks");
+	}
+	s += sprintf(s, "Block count: %d \"%s\"\n", blocks, block_txt);
+	s += sprintf(s, "\n\n");
+
+	return (s - s0);
+}
+
+int prep_inode_screen(int fd, char *s, int ino)
+{
+	int i, ch, len, lines, inodes;
+	char *screen;
+
+	screen = s;
+	inodes = 4; //initial no of inodes to be displayed
+
+start_again:
+	s = screen;
+	/* inode number starts from 1 */
+	if (ino <= 0)
+		ino = 1;
+	/* loop for 'len' inodes starting from 'ino' */
+	for (i = 0; i < inodes; i++) {
+		/* check if the inode number exceed max inode counts */
+		if ((ino + i) > InodesPrGrp) {
+			break;
+		}
+		s += parse_inode(fd, s, ino + i);
+	}
+
+	/* dump the current screen */
+	print_screen(screen, 0, MaxRows);
+	move(MaxRows, 0);
+	printw("Menu| \'ESC\' - main menu; other keys: \'UP\' \'DOWN\'\t\t\t");
+
+	while ((ch = getch()) != 27) { //esc
+		switch (ch) {
+		case KEY_UP:
+			ino -= inodes;
+			break;
+
+		case KEY_DOWN:
+			ino += inodes;
+			break;
+		default:
+			if (ch == 'q') {
+				return 'q';
+			}
+			break;
+		}
+
+		/* re-calibrate screen for next print */
+		len = strlen(screen);
+		for (i = lines = 0; i < len; i++) {
+			if (screen[i] == '\n') {
+				lines++;
+			}
+		}
+		lines = lines / inodes;
+		inodes = MaxRows / lines;
+
+		/* GOTO >:-< */
+		goto start_again;
+	}
+
+	return 0;
+}
+
+
 void init_ext4(int fd, char *sb, char *bg)
 {
 	int address, size;
@@ -337,7 +446,10 @@ void init_ext4(int fd, char *sb, char *bg)
 	address = EXT4_SUPER_BLOCK0_OFFSET;
 	lseek(fd, address, SEEK_SET);
 	read(fd, sb, sizeof(struct ext4_super_block));
-	BlockSize = 1 << (10+psb->s_log_block_size);
+	BlockSize   = 1 << (10+psb->s_log_block_size);
+	InodesPrGrp = psb->s_inodes_per_group;
+	InodeSize   = psb->s_inode_size;
+	HasHugeFile = (psb->s_feature_ro_compat & 0x8) >> 3;
 
 	/* read block group descriptor */
 	address = BlockSize * 1;
@@ -446,12 +558,18 @@ int cmd_ext4(const char *file)
 		case '?':
 			print_help(screen);
 			break;
-		case 'i':
+		case 'd':
 			lseek(fd, InodeTableAddr, SEEK_SET);
 			size = read(fd, mem, BlockSize);
 			dump_mem_tobuffer(screen, mem, size, "Inode Table",
 					   (int)InodeTableAddr, 32);
 			offset = 0;
+			break;
+		case 'i':
+			if ('q' == prep_inode_screen(fd, screen, 1)) {
+				goto exit;
+			}
+			print_help(screen);
 			break;
 		case 't':
 			lseek(fd, InodeBitmapAddr, SEEK_SET);
@@ -497,6 +615,7 @@ int cmd_ext4(const char *file)
 
 	}
 
+exit:
 	printw("\n\Exiting Now\n");
 	endwin();
 
