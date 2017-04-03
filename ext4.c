@@ -18,9 +18,10 @@
 #define MAX_SCREENS			(8)
 
 static int MaxRows, MaxCols;
-static int BlockSize, InodesPrGrp, InodeSize;
+static int BlockSize, InodesPrGrp, InodeSize, BgAddress, BgSize;
 static u64 BlockBitmapAddr, InodeBitmapAddr, InodeTableAddr;
 static u8 HasHugeFile;
+static char *ImageName;
 
 
 void dump_super_block(char *screen, struct ext4_super_block *p)
@@ -33,7 +34,8 @@ void dump_super_block(char *screen, struct ext4_super_block *p)
 	s = screen;
 
 	s += sprintf(s, "+==================================================================+\n");
-	s += sprintf(s, "|                          EXT4 SUPER BLOCK                        |\n");
+	s += sprintf(s, "                 EXT4 SUPER BLOCK (%s -> bs=%d)\n",
+		     ImageName, BlockSize);
 	s += sprintf(s, "+==================================================================+\n");
 	s += sprintf(s, "Inodes count                    = %d\n", p->s_inodes_count);
 	s += sprintf(s, "Blocks count                    = %d\n", p->s_blocks_count_lo);
@@ -177,19 +179,32 @@ void dump_group_desc(char *screen, struct ext4_group_desc *p)
 	bracketor = 0;
 
 	s += sprintf(s, "+==================================================================+\n");
-	s += sprintf(s, "|                       BLOCK GROUP DESCRIPTOR                     |\n");
+	s += sprintf(s, "             BLOCK GROUP DESCRIPTOR (%s @0x%X)\n",
+		     ImageName, BgAddress);
 	s += sprintf(s, "+==================================================================+\n");
-	ul = p->bg_block_bitmap_lo | ((u64)p->bg_block_bitmap_hi << 32);
+	ul = p->bg_block_bitmap_lo;
+	if (BgSize > 32)
+		ul |= ((u64)p->bg_block_bitmap_hi << 32);
 	s += sprintf(s, "Block bitmap location           = %llu\n", ul);
-	ul = p->bg_inode_bitmap_lo | ((u64)p->bg_inode_bitmap_hi << 32);
+	ul = p->bg_inode_bitmap_lo;
+	if (BgSize > 32)
+		ul |= ((u64)p->bg_inode_bitmap_hi << 32);
 	s += sprintf(s, "Inode bitmap location           = %llu\n", ul);
-	ul = p->bg_inode_table_lo | ((u64)p->bg_inode_table_hi << 32);
+	ul = p->bg_inode_table_lo;
+	if (BgSize > 32)
+		ul |= ((u64)p->bg_inode_table_hi << 32);
 	s += sprintf(s, "Inode table location            = %llu\n", ul);
-	ul = p->bg_free_blocks_count_lo | ((u64)p->bg_free_blocks_count_hi << 16);
+	ul = p->bg_free_blocks_count_lo;
+	if (BgSize > 32)
+		ul |= ((u64)p->bg_free_blocks_count_hi << 16);
 	s += sprintf(s, "Free blocks count               = %llu\n", ul);
-	ul = p->bg_free_inodes_count_lo | ((u64)p->bg_free_inodes_count_hi << 16);
+	ul = p->bg_free_inodes_count_lo;
+	if (BgSize > 32)
+		ul |= ((u64)p->bg_free_inodes_count_hi << 16);
 	s += sprintf(s, "Free inode count                = %llu\n", ul);
-	ul = p->bg_used_dirs_count_lo | ((u64)p->bg_used_dirs_count_hi << 16);
+	ul = p->bg_used_dirs_count_lo;
+	if (BgSize > 32)
+		ul |= ((u64)p->bg_used_dirs_count_hi << 16);
 	s += sprintf(s, "Directories count               = %llu\n", ul);
 	s += sprintf(s, "EXT4_BG_flags                   = 0x%x ", p->bg_flags);
 	if (p->bg_flags & 0x04) {
@@ -217,13 +232,21 @@ void dump_group_desc(char *screen, struct ext4_group_desc *p)
 		bracketor = 0;
 	}
 	s += sprintf(s, "\n");
-	ul = p->bg_exclude_bitmap_lo | ((u64)p->bg_exclude_bitmap_hi << 32);
+	ul = p->bg_exclude_bitmap_lo;
+	if (BgSize > 32)
+		ul |= ((u64)p->bg_exclude_bitmap_hi << 32);
 	s += sprintf(s, "Snapshot exclusion bitmap loc.  = %llu\n", ul);
-	ul = p->bg_block_bitmap_csum_lo | ((u64)p->bg_block_bitmap_csum_hi << 16);
+	ul = p->bg_block_bitmap_csum_lo;
+	if (BgSize > 32)
+		ul |= ((u64)p->bg_block_bitmap_csum_hi << 16);
 	s += sprintf(s, "Block bitmap checksum           = %llu\n", ul);
-	ul = p->bg_inode_bitmap_csum_lo | ((u64)p->bg_inode_bitmap_csum_hi << 16);
+	ul = p->bg_inode_bitmap_csum_lo;
+	if (BgSize > 32)
+		ul |= ((u64)p->bg_inode_bitmap_csum_hi << 16);
 	s += sprintf(s, "Inode bitmap checksum           = %llu\n", ul);
-	ul = p->bg_itable_unused_lo | ((u64)p->bg_itable_unused_hi << 16);
+	ul = p->bg_itable_unused_lo;
+	if (BgSize > 32)
+		ul |= ((u64)p->bg_itable_unused_hi << 16);
 	s += sprintf(s, "Unused inode count              = %llu\n", ul);
 }
 
@@ -469,7 +492,7 @@ start_again:
 
 void init_ext4(int fd, char *sb, char *bg)
 {
-	int address, size;
+	int size, ext4_offset;
 	struct ext4_super_block *psb;
 	struct ext4_group_desc *pbg;
 
@@ -477,17 +500,21 @@ void init_ext4(int fd, char *sb, char *bg)
 	pbg = (struct ext4_group_desc *) bg;
 
 	/* read super block */
-	address = EXT4_SUPER_BLOCK0_OFFSET;
-	lseek(fd, address, SEEK_SET);
+	ext4_offset = EXT4_SUPER_BLOCK0_OFFSET;
+	lseek(fd, ext4_offset, SEEK_SET);
 	read(fd, sb, sizeof(struct ext4_super_block));
 	BlockSize   = 1 << (10+psb->s_log_block_size);
 	InodesPrGrp = psb->s_inodes_per_group;
 	InodeSize   = psb->s_inode_size;
 	HasHugeFile = (psb->s_feature_ro_compat & 0x8) >> 3;
+	BgSize      = psb->s_desc_size;
 
 	/* read block group descriptor */
-	address = BlockSize * 1;
-	lseek(fd, address, SEEK_SET);
+	if ((ext4_offset + sizeof(struct ext4_super_block)) > BlockSize)
+		BgAddress = BlockSize * 2;
+	else
+		BgAddress = BlockSize * 1;
+	lseek(fd, BgAddress, SEEK_SET);
 	read(fd, bg, sizeof(struct ext4_group_desc));
 	BlockBitmapAddr = (pbg->bg_block_bitmap_lo |
 		((u64)pbg->bg_block_bitmap_hi << 32)) * BlockSize;
@@ -538,6 +565,7 @@ int cmd_ext4(const char *file)
 		return -1;
 	}
 
+	ImageName = (char *)get_filename(file);
 	fd = open(file, O_RDONLY);
 	if (fd < 0) {
 		printf(" Could not open %s\n", file);

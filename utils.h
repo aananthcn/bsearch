@@ -12,5 +12,6 @@ int hexstring_to_int(const char *str);
 void print_mem_onscreen(char *screen, int sz_y, int mem, int bpline);
 void dump_mem_tobuffer(char *obuf, char *ibuf, int sz, char *msg,
 		       int addr, int bpline);
+const char* get_filename(const char *path);
 
 #endif

@@ -123,3 +123,28 @@ int hexstring_to_int(const char *str)
 	return value;
 }
 
+/*************************************************************************
+ * Function: get_filename
+ *
+ * This function finds the name of the file from the path
+ *
+ * arg1: file path
+ *
+ * Returns null if any failure found else the file name
+ */
+const char* get_filename(const char *path)
+{
+        int i;
+
+        if(path == NULL)
+                return path;
+
+        i = strlen(path);
+        for(; i > 0; i--)
+                if(path[i] == '/') {
+                        i++;
+                        break;
+                }
+
+        return (path+i);
+}

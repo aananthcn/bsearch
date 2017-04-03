@@ -4,3 +4,5 @@
 *.img
 bsearch
 tags
+.DS_*
+bsearch.*
